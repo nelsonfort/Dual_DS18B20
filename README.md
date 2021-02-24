@@ -18,3 +18,9 @@ In the next image there can be the the previous image zoomed. It can be perceive
 The image below is more amplified to see that the pulses made are around 125ns. While the library is performing the connection to the sensor.
 
 ![Library without non blocking delay2](/RDM_IMAGES/OWCTestZoomed2.jpeg)
+
+
+
+
+
+##### This library is based in the [OneWire Arduino Library](https://www.arduinolibraries.info/libraries/one-wire) 
