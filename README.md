@@ -6,11 +6,11 @@ This can be made because the original library was changed to not use blocking de
 
 In the following image there is a first signal that send a reset condition to get a response of the sensor after the reset pulse (signal in low state for 480us). There is another signal that switches an output pin al the time to check that the delays was mitigated satisfactorily.
 
-![Library without non blocking delay](/RDM_IMAGES/OWCTest.jpeg)
+![Library without non blocking delay](/RDM_IMAGES/OWCTest.jpg)
 
 In the next image there can be the the previous image zoomed. It can be perceived some periods of time where the toogle pin is not performed because in these period of time the library is making some calculations that need some time to be completed.
 
-![Library without non blocking delay1](/RDM_IMAGES/OWCTestZoomed1.jpeg)
+![Library without non blocking delay1](/RDM_IMAGES/OWCTestZoomed1.jpg)
 
 The image below is more amplified to see that the pulses made are around 125ns. While the library is performing the connection to the sensor.
 
