@@ -1,5 +1,8 @@
 # Dual_DS18B20
+## **Description**
+**----------------------------------------------------------------------
 This repository is made to create a structure to read two different sensors and detect which sensor has a given address to reference it without assumptions.
+------------------------------------------------------------------------**
 
 The library has the capabilities to let the microcontroller do other tasks while the OneWire connection is performed with the two DS18B20 sensors.
 This can be made because the original library was changed to not use blocking delays and in each access to a method the method returns its state to detect if it continues processing a query or the data ready to be used.
