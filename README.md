@@ -27,8 +27,11 @@ The image displayed below shows the procedure to read all the registers (9) that
 ![ReadingAllRegs1](/RDM_IMAGES/ReadingAllRegs.jpeg)
 
 In the following images the toogle pin is working while the library is communicating with the DS18B20 to receive the data stored on its registers.
+
 So the microcontroller can do other tasks during the communication. 
+
 *---------------Currently debugging------------------------*
+
 *-----Need to verify if the data received is correct.------*
 
 ![ReadingAllRegs2](/RDM_IMAGES/ReadingAllRegsZoom1.jpeg)
