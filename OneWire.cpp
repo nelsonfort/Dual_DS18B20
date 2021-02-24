@@ -140,11 +140,14 @@ sample code bearing this copyright.
 */
 
 #include <Arduino.h>
+#include <microsDelay.h>
 #include "OneWire.h"
 #include "util/OneWire_direct_gpio.h"
 
+microsDelay delayMicros; /*non blocking delay in us class*/
 
-void OneWire::begin(uint8_t pin)
+
+void OneWire::begin( uint8_t pin )
 {
 	pinMode(pin, INPUT);
 	bitmask = PIN_TO_BITMASK(pin);
@@ -155,24 +158,120 @@ void OneWire::begin(uint8_t pin)
 }
 
 
-// Perform the onewire reset function.  We will wait up to 250uS for
+//
+// Perform the oneWire reset function.  We will wait up to 250uS for
 // the bus to come high, if it doesn't then it is broken or shorted
-// and we return a 0;
+// and we return a "pulseNotDetected".
+// Returns "functionBusy" if the function is still working.
+// If the function has finish it returns "pulseNotDetected" or "pulseDetected"
 //
-// Returns 1 if a device asserted a presence pulse, 0 otherwise.
-//
-uint8_t OneWire::reset(void)
+enum_oneWireState OneWire::reset(void)
 {
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-	uint8_t r;
+	/*BEGINS NEW CODE*/
+	/*indicates the step on the state machine*/
+	static enum{ startToWaitUntilIsHigh, waitUntilIsHigh, driveOutputLow, allowBusToBeFloat, waitToFinish } step = startToWaitUntilIsHigh; 
+		
+	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
+	enum_oneWireState functionState = functionBusy; /*function return value*/
+	/*ENDS NEW CODE*/	
+	
+	static IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
+	static volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
+	static uint8_t r; /*registers if there is a device asserted a presence pulse*/ 
 	uint8_t retries = 125;
 
-	noInterrupts();
-	DIRECT_MODE_INPUT(reg, mask);
-	interrupts();
+	//**BEGINS NEW CODE*//
+	switch( step )
+	{
+		case startToWaitUntilIsHigh:
+			noInterrupts();
+			DIRECT_MODE_INPUT(reg, mask);
+			interrupts();
+			delayMicros.start(2);
+			step = waitUntilIsHigh; /*goes to the next step*/
+			break;
+	
+		case waitUntilIsHigh: // waits until the wire is high... just in case
+			if( delayMicros.justFinished() )
+			{
+				if( DIRECT_READ(reg, mask) )
+					step = driveOutputLow; /*goes to the next step*/
+			}
+			else
+			{	
+				delayMicros.start(2);
+				if( --retries == 0)
+				{
+					functionState = pulseNotDetected;
+					step = startToWaitUntilIsHigh; /*resets the steps*/
+				}
+			}
+			break;
+			
+		case driveOutputLow:
+			if( firstEntry ) /*if the state machine is entering the state*/
+			{
+				firstEntry = false;
+				noInterrupts();
+				DIRECT_WRITE_LOW(reg, mask);
+				DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
+				interrupts();
+				delayMicros.start(480);
+			}
+			else if(delayMicros.justFinished())
+			{
+				firstEntry = true;
+				step = allowBusToBeFloat; /*goes to the next step*/						
+			}	
+			break;
+			
+		case allowBusToBeFloat:
+			if( firstEntry ) /*if the state machine is entering the state*/
+			{
+				firstEntry = false;
+				noInterrupts();
+				DIRECT_MODE_INPUT(reg, mask);	// allow it to float
+				interrupts();
+				delayMicros.start(70);	
+			}
+			else if(delayMicros.justFinished())
+			{
+				firstEntry = true;
+				noInterrupts();
+				r = !DIRECT_READ(reg, mask);
+				interrupts();
+				step = waitToFinish; /*goes to the next step*/
+			}
+			break;
+			
+		case waitToFinish:
+			if( firstEntry )
+			{
+				firstEntry = false;
+				delayMicros.start(410);
+			}
+			else if( delayMicros.justFinished() )
+			{
+				firstEntry = true;
+				if( r != 0) /*if there is a presence pulse*/
+				{  
+					functionState = pulseDetected;
+				}
+				else
+				{
+					functionState = pulseNotDetected;
+				}
+				step = startToWaitUntilIsHigh; /*resets the steps, so goes to the first step*/	
+			}
+			break;
+	}
+	
+	return functionState;
+	//**END NEW CODE**//
+	
+	//*BEGINS OLD CODE*//
 	// wait until the wire is high... just in case
-	do {
+	/*do {
 		if (--retries == 0) return 0;
 		delayMicroseconds(2);
 	} while ( !DIRECT_READ(reg, mask));
@@ -188,19 +287,88 @@ uint8_t OneWire::reset(void)
 	r = !DIRECT_READ(reg, mask);
 	interrupts();
 	delayMicroseconds(410);
-	return r;
+	return r;*/
+	//*ENDS OLD CODE*//
 }
+
 
 //
 // Write a bit. Port and bit is used to cut lookup time and provide
 // more certain timing.
+// Returns "functionBusy" and "functionFinishes"
 //
-void OneWire::write_bit(uint8_t v)
+//**************************** MUST BE CHANGED*************************************
+enum_oneWireState OneWire::write_bit(uint8_t v)
 {
+	/*BEGINS NEW CODE*/
+	/*indicates the step on the state machine*/
+	static enum{ checksBitToWrite, drivesOutputLow, drivesOutputHigh } step = checksBitToWrite;
+	
+	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
+	enum_oneWireState functionState = functionBusy; /*function return value*/
+	static uint8_t firstDelay = 0;
+	static uint8_t secondDelay = 0;
+	/*ENDS NEW CODE*/
+	
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
 	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-
-	if (v & 1) {
+	
+	
+	/*BEGINS NEW CODE*/
+	switch(step)
+	{
+		case checksBitToWrite:
+			if(v & 1)
+			{
+				firstDelay = 10;
+				secondDelay = 55;
+			}
+			else
+			{
+				firstDelay = 65;
+				secondDelay = 5;
+			}
+			step = drivesOutputLow;
+			break;
+		
+		case drivesOutputLow:
+			if(firstEntry)
+			{
+				firstEntry = false;
+				noInterrupts();
+				DIRECT_WRITE_LOW(reg, mask);
+				DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
+				delayMicros.start(firstDelay);
+				interrupts();
+			}
+			else if( delayMicros.justFinished() )
+			{
+				firstEntry = true;
+				step = drivesOutputHigh; /*goes to the next step*/				
+			}
+			break;
+			
+		case drivesOutputHigh:
+			if( firstEntry )
+			{
+				firstEntry = false;
+				DIRECT_WRITE_HIGH(reg, mask);	// drive output high
+				delayMicros.start(secondDelay);
+			}
+			else if( delayMicros.justFinished() )
+			{
+				firstEntry = true;
+				step = checksBitToWrite; /*goes to the initial step to reset the machine state*/
+				functionState = functionFinishes;
+			}
+			break;
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*if (v & 1) {
 		noInterrupts();
 		DIRECT_WRITE_LOW(reg, mask);
 		DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
@@ -216,29 +384,143 @@ void OneWire::write_bit(uint8_t v)
 		DIRECT_WRITE_HIGH(reg, mask);	// drive output high
 		interrupts();
 		delayMicroseconds(5);
-	}
+	}*/
+	//*ENDS OLD CODE*//
 }
+
 
 //
 // Read a bit. Port and bit is used to cut lookup time and provide
 // more certain timing.
-//
-uint8_t OneWire::read_bit(void)
+// Returns "functionBusy", "bitReadHigh" or "bitReadLow"
+enum_oneWireState OneWire::read_bit(void)
 {
+	/*BEGINS NEW CODE*/
+	/*indicates the step on the state machine*/
+	static enum{ startsReadTimeSlot, letPinFloat, readBit, waitToFinish } step = startsReadTimeSlot;
+	
+	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
+	enum_oneWireState functionState = functionBusy; /*function return value*/
+	static uint8_t firstDelay = 0;
+	static uint8_t secondDelay = 0;
+	/*ENDS NEW CODE*/
+	
 	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
 	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-	uint8_t r;
+	static uint8_t r;
 
-	noInterrupts();
+	/*BEGINS NEW CODE*/
+	switch( step )
+	{
+		case startsReadTimeSlot:
+			if(firstEntry)
+			{
+				
+				firstEntry = false;
+				noInterrupts();
+				DIRECT_MODE_OUTPUT(reg, mask);
+				delayMicros.start(3);
+				DIRECT_WRITE_LOW(reg, mask); //starts a read time Slot
+				interrupts();
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+			}
+			else if( delayMicros.justFinished() )
+			{
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+				firstEntry = true;
+				step = letPinFloat; /*goes to the next step*/
+			}
+			break;
+			
+		case letPinFloat:
+			if(firstEntry)
+			{
+				firstEntry = false;
+				noInterrupts();
+				delayMicros.start(10);
+				DIRECT_MODE_INPUT(reg, mask);	// let pin float, pull up will raise
+				interrupts();
+				
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+			}
+			else if( delayMicros.justFinished() )
+			{
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+				firstEntry = true;
+				step = readBit; /*goes to the next step*/
+			}
+			break;
+			
+		case readBit:
+			if(firstEntry)
+			{
+				firstEntry = false;
+				noInterrupts();
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+				delayMicros.start(53);
+				r = DIRECT_READ(reg, mask);
+				//DEBUG
+				digitalWrite(18, HIGH);
+				digitalWrite(18, LOW);
+				//DEBUG
+				interrupts();
+				
+			}
+			else if( delayMicros.justFinished() )
+			{
+				
+				firstEntry = true;
+				if(r != 0)
+				{
+					//DEBUG
+					digitalWrite(21, HIGH);
+					digitalWrite(21, LOW);
+					//DEBUG
+					functionState = bitReadHigh;
+				}
+				else
+				{	
+					//DEBUG
+					digitalWrite(19, HIGH);
+					digitalWrite(19, LOW);
+					//DEBUG
+					functionState = bitReadLow;
+				}
+				step = startsReadTimeSlot;  /*goes to the initial step to reset the machine state*/ 
+			}
+			break;
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*noInterrupts();
 	DIRECT_MODE_OUTPUT(reg, mask);
-	DIRECT_WRITE_LOW(reg, mask);
+	DIRECT_WRITE_LOW(reg, mask); //starts a read time Slot
 	delayMicroseconds(3);
 	DIRECT_MODE_INPUT(reg, mask);	// let pin float, pull up will raise
 	delayMicroseconds(10);
 	r = DIRECT_READ(reg, mask);
 	interrupts();
 	delayMicroseconds(53);
-	return r;
+	return r;*/
+	//*ENDS OLD CODE*//
 }
 
 //
@@ -248,10 +530,38 @@ uint8_t OneWire::read_bit(void)
 // go tri-state at the end of the write to avoid heating in a short or
 // other mishap.
 //
-void OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
-    uint8_t bitMask;
+// Returns "functionBusy" or "functionFinishes"
+enum_oneWireState OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
+    
+	//*BEGINS NEW CODE*//
+	static uint8_t bitMask = 0x01;
+	enum_oneWireState functionState = functionBusy;
+	
+		
+	if( OneWire::write_bit( (bitMask & v)?1:0) == functionFinishes )
+		bitMask <<= 1;
+	
+	if( bitMask > 0 )
+		functionState = functionBusy;
+	else
+	{	
+		if ( !power) {
+			noInterrupts();
+			DIRECT_MODE_INPUT(baseReg, bitmask);
+			DIRECT_WRITE_LOW(baseReg, bitmask);
+			interrupts();
+		}
+		bitMask = 0x01; //
+		functionState = functionFinishes;
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*uint8_t bitMask;
 
-    for (bitMask = 0x01; bitMask; bitMask <<= 1) {
+    for (bitMask = 0x01; bitMask ; bitMask <<= 1) {
 	OneWire::write_bit( (bitMask & v)?1:0);
     }
     if ( !power) {
@@ -259,56 +569,194 @@ void OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
 	DIRECT_MODE_INPUT(baseReg, bitmask);
 	DIRECT_WRITE_LOW(baseReg, bitmask);
 	interrupts();
-    }
+    }*/
+	//*ENDS OLD CODE*//
 }
 
-void OneWire::write_bytes(const uint8_t *buf, uint16_t count, bool power /* = 0 */) {
-  for (uint16_t i = 0 ; i < count ; i++)
-    write(buf[i]);
-  if (!power) {
-    noInterrupts();
-    DIRECT_MODE_INPUT(baseReg, bitmask);
-    DIRECT_WRITE_LOW(baseReg, bitmask);
-    interrupts();
-  }
+
+//
+//Returns "functionBusy" or "functionFinishes" 
+enum_oneWireState OneWire::write_bytes(const uint8_t *buf, uint16_t count, bool power /* = 0 */) {
+  
+	//*BEGINS NEW CODE*//
+	static uint16_t byteNumber = 0; 
+	static uint16_t count_internal = 0;
+	enum_oneWireState functionState = functionBusy;
+  
+	if( byteNumber == 0)  /*on the first machine state step the count is copied to internal variable*/
+		count_internal = count;
+	
+	if( byteNumber < count)
+	{
+		if(write(buf[byteNumber]) == functionFinishes)
+			byteNumber++;
+	}
+	else
+	{
+		byteNumber = 0; /*resets the state of the state machine*/
+		functionState = functionFinishes;
+	}
+	
+	if (!power)
+	{
+		noInterrupts();
+		DIRECT_MODE_INPUT(baseReg, bitmask);
+		DIRECT_WRITE_LOW(baseReg, bitmask);
+		interrupts();
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+  
+	//*BEGINS OLD CODE*//
+	/*for (uint16_t i = 0 ; i < count ; i++)
+		write(buf[i]);
+	if (!power) 
+	{
+		noInterrupts();
+		DIRECT_MODE_INPUT(baseReg, bitmask);
+		DIRECT_WRITE_LOW(baseReg, bitmask);
+		interrupts();
+	}*/
+	//*ENDS OLD CODE*//
 }
+
 
 //
 // Read a byte
 //
-uint8_t OneWire::read() {
-    uint8_t bitMask;
+// Returns "functionBusy", "functionFinishes"
+//*********************************CORREGIR***********************************************************////
+enum_oneWireState OneWire::read( uint8_t *readBuffer) {
+    //*BEGINS NEW CODE*//
+	enum_oneWireState functionState = functionBusy;
+	static uint8_t bitMask = 0x01;
+	static uint8_t readBuffer_internal = 0;
+	
+	
+	if( (OneWire::read_bit() == functionFinishes) )
+	{	
+		readBuffer_internal |= bitMask;
+		bitMask <<= 1;
+	}
+	
+	
+	if( bitMask == 0 ) /*when the shift process is over*/
+	{
+		functionState = functionFinishes;
+		bitMask = 0x01; /*resets the bitMask*/
+		*readBuffer = readBuffer_internal; /*copies the reading into the buffer*/
+		readBuffer_internal = 0; /*cleans the buffer*/
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*uint8_t bitMask;
     uint8_t r = 0;
 
     for (bitMask = 0x01; bitMask; bitMask <<= 1) {
 	if ( OneWire::read_bit()) r |= bitMask;
     }
-    return r;
+    return r;*/
+	//*ENDS OLD CODE*//
 }
 
-void OneWire::read_bytes(uint8_t *buf, uint16_t count) {
-  for (uint16_t i = 0 ; i < count ; i++)
-    buf[i] = read();
+
+//
+//Returns "functionBusy" or "functionFinishes"
+enum_oneWireState OneWire::read_bytes(uint8_t *buf, uint16_t count) {
+	
+	//*BEGINS NEW CODE*//
+	
+	static uint16_t byteNumber = 0;
+	static uint16_t count_internal = 0;
+	enum_oneWireState functionState = functionBusy;
+	
+	if( byteNumber == 0)	/*on the first machine state step the count is copied to internal variable*/
+		count_internal = count;
+	
+	if( byteNumber < count_internal )
+	{
+		if( read( &buf[byteNumber] ) == functionFinishes ) /*when it finishes the read function loads into byte buffer*/
+			byteNumber++;
+	}
+	else
+	{
+		functionState = functionFinishes;
+		byteNumber = 0; /*resets the byte number*/
+		count_internal = 0;
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*for (uint16_t i = 0 ; i < count ; i++)
+		buf[i] = read();*/
+	//*ENDS OLD CODE*//
 }
+
 
 //
 // Do a ROM select
-//
-void OneWire::select(const uint8_t rom[8])
+// Returns "functionBusy" or "functionFinishes"
+enum_oneWireState OneWire::select(const uint8_t rom[8])
 {
-    uint8_t i;
+    //*BEGINS NEW CODE*//
+	static uint8_t numberByteSended = 0;
+	enum_oneWireState functionState = functionBusy;
+	
+	if( numberByteSended == 0 )
+	{
+		if( write(0x55) == functionFinishes) //Choose ROM
+			numberByteSended++;
+	}
+	else
+	{
+		if(numberByteSended < 9) /*if the 64 bits it wasn't yet sent*/
+		{
+			if( write(rom[numberByteSended - 1]) == functionFinishes )
+				numberByteSended++;
+		}
+		else /*if the 64 bits of ROM was sent*/
+		{
+			numberByteSended = 0; /*resets the internal variable*/
+			functionState = functionFinishes;
+		}
+	}
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	/*uint8_t i;
 
     write(0x55);           // Choose ROM
 
-    for (i = 0; i < 8; i++) write(rom[i]);
+    for (i = 0; i < 8; i++) write(rom[i]);*/
+	//*ENDS OLD CODE*//
 }
 
 //
 // Do a ROM skip
-//
-void OneWire::skip()
+// Returns "functionBusy" or "functionFinishes"
+enum_oneWireState OneWire::skip()
 {
-    write(0xCC);           // Skip ROM
+    //*BEGINS NEW CODE*//
+	
+	enum_oneWireState functionState = functionBusy;
+	
+	if(write(0xCC) == functionFinishes) /*Skip ROM*/
+		functionState = functionFinishes;
+	
+	return functionState;
+	//*ENDS NEW CODE*//
+	
+	//*BEGINS OLD CODE*//
+	//write(0xCC);           // Skip ROM
+	//*ENDS OLD CODE*//
 }
 
 void OneWire::depower()
