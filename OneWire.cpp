@@ -145,13 +145,12 @@ sample code bearing this copyright.
 #include "util/OneWire_direct_gpio.h"
 
 microsDelay delayMicros; /*non blocking delay in us class*/
-
+static uint8_t pin_oneWire;
 
 void OneWire::begin( uint8_t pin )
 {
+	pin_oneWire = pin;
 	pinMode(pin, INPUT);
-	bitmask = PIN_TO_BITMASK(pin);
-	baseReg = PIN_TO_BASEREG(pin);
 #if ONEWIRE_SEARCH
 	reset_search();
 #endif
@@ -163,6 +162,8 @@ void OneWire::begin( uint8_t pin )
 // the bus to come high, if it doesn't then it is broken or shorted
 // and we return a "pulseNotDetected".
 // Returns "functionBusy" if the function is still working.
+//
+// MAX BLOCKING TIME PER CALL: 70us
 // If the function has finish it returns "pulseNotDetected" or "pulseDetected"
 //
 enum_oneWireState OneWire::reset(void)
@@ -170,23 +171,19 @@ enum_oneWireState OneWire::reset(void)
 	/*BEGINS NEW CODE*/
 	/*indicates the step on the state machine*/
 	static enum{ startToWaitUntilIsHigh, waitUntilIsHigh, driveOutputLow, allowBusToBeFloat, waitToFinish } step = startToWaitUntilIsHigh; 
-		
+	
 	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
 	enum_oneWireState functionState = functionBusy; /*function return value*/
-	/*ENDS NEW CODE*/	
+	/*ENDS NEW CODE*/
 	
-	static IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	static volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-	static uint8_t r; /*registers if there is a device asserted a presence pulse*/ 
-	uint8_t retries = 125;
+	static uint8_t busReading; /*registers if there is a device asserted a presence pulse*/ 
+	static uint8_t retries = 125;
 
 	//**BEGINS NEW CODE*//
 	switch( step )
 	{
 		case startToWaitUntilIsHigh:
-			noInterrupts();
-			DIRECT_MODE_INPUT(reg, mask);
-			interrupts();
+			pinMode(pin_oneWire, INPUT);
 			delayMicros.start(2);
 			step = waitUntilIsHigh; /*goes to the next step*/
 			break;
@@ -194,7 +191,7 @@ enum_oneWireState OneWire::reset(void)
 		case waitUntilIsHigh: // waits until the wire is high... just in case
 			if( delayMicros.justFinished() )
 			{
-				if( DIRECT_READ(reg, mask) )
+				if( digitalRead(pin_oneWire) )
 					step = driveOutputLow; /*goes to the next step*/
 			}
 			else
@@ -212,10 +209,8 @@ enum_oneWireState OneWire::reset(void)
 			if( firstEntry ) /*if the state machine is entering the state*/
 			{
 				firstEntry = false;
-				noInterrupts();
-				DIRECT_WRITE_LOW(reg, mask);
-				DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
-				interrupts();
+				pinMode(pin_oneWire, OUTPUT);
+				digitalWrite(pin_oneWire, LOW);
 				delayMicros.start(480);
 			}
 			else if(delayMicros.justFinished())
@@ -226,22 +221,11 @@ enum_oneWireState OneWire::reset(void)
 			break;
 			
 		case allowBusToBeFloat:
-			if( firstEntry ) /*if the state machine is entering the state*/
-			{
-				firstEntry = false;
-				noInterrupts();
-				DIRECT_MODE_INPUT(reg, mask);	// allow it to float
-				interrupts();
-				delayMicros.start(70);	
-			}
-			else if(delayMicros.justFinished())
-			{
-				firstEntry = true;
-				noInterrupts();
-				r = !DIRECT_READ(reg, mask);
-				interrupts();
-				step = waitToFinish; /*goes to the next step*/
-			}
+			pinMode(pin_oneWire, INPUT); //allow it to float
+			delayMicroseconds(70);
+			busReading = digitalRead(pin_oneWire);
+			step = waitToFinish; /*goes to the next step*/
+			
 			break;
 			
 		case waitToFinish:
@@ -253,7 +237,7 @@ enum_oneWireState OneWire::reset(void)
 			else if( delayMicros.justFinished() )
 			{
 				firstEntry = true;
-				if( r != 0) /*if there is a presence pulse*/
+				if( busReading == 0) /*if there is a presence pulse*/
 				{  
 					functionState = pulseDetected;
 				}
@@ -295,76 +279,36 @@ enum_oneWireState OneWire::reset(void)
 //
 // Write a bit. Port and bit is used to cut lookup time and provide
 // more certain timing.
-// Returns "functionBusy" and "functionFinishes"
+// MAX BLOCKING TIME PER CALL: 70us
 //
-//**************************** MUST BE CHANGED*************************************
-enum_oneWireState OneWire::write_bit(uint8_t v)
+void OneWire::write_bit(uint8_t v)
 {
 	/*BEGINS NEW CODE*/
-	/*indicates the step on the state machine*/
-	static enum{ checksBitToWrite, drivesOutputLow, drivesOutputHigh } step = checksBitToWrite;
-	
-	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
 	enum_oneWireState functionState = functionBusy; /*function return value*/
 	static uint8_t firstDelay = 0;
 	static uint8_t secondDelay = 0;
-	/*ENDS NEW CODE*/
 	
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-	
-	
-	/*BEGINS NEW CODE*/
-	switch(step)
+	/*checks bit to write*/
+	if(v & 1)
 	{
-		case checksBitToWrite:
-			if(v & 1)
-			{
-				firstDelay = 10;
-				secondDelay = 55;
-			}
-			else
-			{
-				firstDelay = 65;
-				secondDelay = 5;
-			}
-			step = drivesOutputLow;
-			break;
-		
-		case drivesOutputLow:
-			if(firstEntry)
-			{
-				firstEntry = false;
-				noInterrupts();
-				DIRECT_WRITE_LOW(reg, mask);
-				DIRECT_MODE_OUTPUT(reg, mask);	// drive output low
-				delayMicros.start(firstDelay);
-				interrupts();
-			}
-			else if( delayMicros.justFinished() )
-			{
-				firstEntry = true;
-				step = drivesOutputHigh; /*goes to the next step*/				
-			}
-			break;
-			
-		case drivesOutputHigh:
-			if( firstEntry )
-			{
-				firstEntry = false;
-				DIRECT_WRITE_HIGH(reg, mask);	// drive output high
-				delayMicros.start(secondDelay);
-			}
-			else if( delayMicros.justFinished() )
-			{
-				firstEntry = true;
-				step = checksBitToWrite; /*goes to the initial step to reset the machine state*/
-				functionState = functionFinishes;
-			}
-			break;
+		firstDelay = 10;
+		secondDelay = 55;
+	}
+	else
+	{
+		firstDelay = 65;
+		secondDelay = 5;
 	}
 	
-	return functionState;
+	/*drives output LOW*/
+	pinMode(pin_oneWire, OUTPUT);
+	digitalWrite(pin_oneWire, LOW);
+	delayMicroseconds(firstDelay);
+	
+	/*drives output HIGH*/
+	digitalWrite(pin_oneWire, HIGH);
+	delayMicroseconds(secondDelay);
+	
 	//*ENDS NEW CODE*//
 	
 	//*BEGINS OLD CODE*//
@@ -392,121 +336,39 @@ enum_oneWireState OneWire::write_bit(uint8_t v)
 //
 // Read a bit. Port and bit is used to cut lookup time and provide
 // more certain timing.
-// Returns "functionBusy", "bitReadHigh" or "bitReadLow"
+// This function has blocking delays to assure the actions be on time
+// MAX BLOCKING TIME PER CALL: 66us 
+//
+// Returns "bitReadHigh" or "bitReadLow"
+//
 enum_oneWireState OneWire::read_bit(void)
 {
 	/*BEGINS NEW CODE*/
-	/*indicates the step on the state machine*/
-	static enum{ startsReadTimeSlot, letPinFloat, readBit, waitToFinish } step = startsReadTimeSlot;
-	
-	static bool firstEntry = true; /*used as flag for the entry function of the machine state*/
-	enum_oneWireState functionState = functionBusy; /*function return value*/
+	enum_oneWireState functionState; /*function return value*/
 	static uint8_t firstDelay = 0;
 	static uint8_t secondDelay = 0;
-	/*ENDS NEW CODE*/
+	static uint8_t busReading = 0;
 	
-	IO_REG_TYPE mask IO_REG_MASK_ATTR = bitmask;
-	volatile IO_REG_TYPE *reg IO_REG_BASE_ATTR = baseReg;
-	static uint8_t r;
-
-	/*BEGINS NEW CODE*/
-	switch( step )
-	{
-		case startsReadTimeSlot:
-			if(firstEntry)
-			{
-				
-				firstEntry = false;
-				noInterrupts();
-				DIRECT_MODE_OUTPUT(reg, mask);
-				delayMicros.start(3);
-				DIRECT_WRITE_LOW(reg, mask); //starts a read time Slot
-				interrupts();
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-			}
-			else if( delayMicros.justFinished() )
-			{
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-				firstEntry = true;
-				step = letPinFloat; /*goes to the next step*/
-			}
-			break;
-			
-		case letPinFloat:
-			if(firstEntry)
-			{
-				firstEntry = false;
-				noInterrupts();
-				delayMicros.start(10);
-				DIRECT_MODE_INPUT(reg, mask);	// let pin float, pull up will raise
-				interrupts();
-				
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-			}
-			else if( delayMicros.justFinished() )
-			{
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-				firstEntry = true;
-				step = readBit; /*goes to the next step*/
-			}
-			break;
-			
-		case readBit:
-			if(firstEntry)
-			{
-				firstEntry = false;
-				noInterrupts();
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-				delayMicros.start(53);
-				r = DIRECT_READ(reg, mask);
-				//DEBUG
-				digitalWrite(18, HIGH);
-				digitalWrite(18, LOW);
-				//DEBUG
-				interrupts();
-				
-			}
-			else if( delayMicros.justFinished() )
-			{
-				
-				firstEntry = true;
-				if(r != 0)
-				{
-					//DEBUG
-					digitalWrite(21, HIGH);
-					digitalWrite(21, LOW);
-					//DEBUG
-					functionState = bitReadHigh;
-				}
-				else
-				{	
-					//DEBUG
-					digitalWrite(19, HIGH);
-					digitalWrite(19, LOW);
-					//DEBUG
-					functionState = bitReadLow;
-				}
-				step = startsReadTimeSlot;  /*goes to the initial step to reset the machine state*/ 
-			}
-			break;
-	}
+	/*startsReadTimeSlot*/
+	pinMode(pin_oneWire, OUTPUT);
+	digitalWrite(pin_oneWire, LOW);
+	delayMicroseconds(3);
+	
+	/*letPinFloat*/
+	pinMode(pin_oneWire, INPUT);
+	delayMicroseconds(10);
+	
+	/*readBit*/
+	busReading = digitalRead(pin_oneWire);//DIRECT_READ(reg, mask);
+	if(busReading != 0)
+		functionState = bitReadHigh;
+	else
+		functionState = bitReadLow;
+	
+	delayMicroseconds(53);
 	
 	return functionState;
+	
 	//*ENDS NEW CODE*//
 	
 	//*BEGINS OLD CODE*//
@@ -530,6 +392,7 @@ enum_oneWireState OneWire::read_bit(void)
 // go tri-state at the end of the write to avoid heating in a short or
 // other mishap.
 //
+// MAX BLOCKING TIME PER CALL: 70us
 // Returns "functionBusy" or "functionFinishes"
 enum_oneWireState OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
     
@@ -537,21 +400,18 @@ enum_oneWireState OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
 	static uint8_t bitMask = 0x01;
 	enum_oneWireState functionState = functionBusy;
 	
-		
-	if( OneWire::write_bit( (bitMask & v)?1:0) == functionFinishes )
-		bitMask <<= 1;
+	
+	OneWire::write_bit( (bitMask & v)?1:0);
+	bitMask <<= 1;
 	
 	if( bitMask > 0 )
 		functionState = functionBusy;
 	else
 	{	
-		if ( !power) {
-			noInterrupts();
-			DIRECT_MODE_INPUT(baseReg, bitmask);
-			DIRECT_WRITE_LOW(baseReg, bitmask);
-			interrupts();
-		}
-		bitMask = 0x01; //
+		if ( !power) 
+			pinMode(pin_oneWire, INPUT_PULLUP);
+		
+		bitMask = 0x01; //resets the bitMask
 		functionState = functionFinishes;
 	}
 	
@@ -574,7 +434,7 @@ enum_oneWireState OneWire::write(uint8_t v, uint8_t power /* = 0 */) {
 }
 
 
-//
+//MAX BLOCKING TIME PER CALL: 70us
 //Returns "functionBusy" or "functionFinishes" 
 enum_oneWireState OneWire::write_bytes(const uint8_t *buf, uint16_t count, bool power /* = 0 */) {
   
@@ -598,12 +458,7 @@ enum_oneWireState OneWire::write_bytes(const uint8_t *buf, uint16_t count, bool 
 	}
 	
 	if (!power)
-	{
-		noInterrupts();
-		DIRECT_MODE_INPUT(baseReg, bitmask);
-		DIRECT_WRITE_LOW(baseReg, bitmask);
-		interrupts();
-	}
+		pinMode(pin_oneWire, INPUT_PULLUP);
 	
 	return functionState;
 	//*ENDS NEW CODE*//
@@ -624,6 +479,7 @@ enum_oneWireState OneWire::write_bytes(const uint8_t *buf, uint16_t count, bool 
 
 //
 // Read a byte
+//MAX BLOCKING TIME PER CALL: 66us
 //
 // Returns "functionBusy", "functionFinishes"
 //*********************************CORREGIR***********************************************************////
@@ -634,12 +490,10 @@ enum_oneWireState OneWire::read( uint8_t *readBuffer) {
 	static uint8_t readBuffer_internal = 0;
 	
 	
-	if( (OneWire::read_bit() == functionFinishes) )
-	{	
+	if( (OneWire::read_bit() == bitReadHigh) ) /*if the bit is read LOW, the function left the 0 and goes to the next bit*/
 		readBuffer_internal |= bitMask;
-		bitMask <<= 1;
-	}
 	
+	bitMask <<= 1; /*shifts the bitMask to write the next buffer bit*/
 	
 	if( bitMask == 0 ) /*when the shift process is over*/
 	{
@@ -664,7 +518,7 @@ enum_oneWireState OneWire::read( uint8_t *readBuffer) {
 }
 
 
-//
+//MAX BLOCKING TIME PER CALL: 66us
 //Returns "functionBusy" or "functionFinishes"
 enum_oneWireState OneWire::read_bytes(uint8_t *buf, uint16_t count) {
 	
@@ -701,6 +555,7 @@ enum_oneWireState OneWire::read_bytes(uint8_t *buf, uint16_t count) {
 
 //
 // Do a ROM select
+// MAX BLOCKING TIME PER CALL: 70us
 // Returns "functionBusy" or "functionFinishes"
 enum_oneWireState OneWire::select(const uint8_t rom[8])
 {
@@ -741,6 +596,7 @@ enum_oneWireState OneWire::select(const uint8_t rom[8])
 
 //
 // Do a ROM skip
+// MAX BLOCKING TIME PER CALL: 70us
 // Returns "functionBusy" or "functionFinishes"
 enum_oneWireState OneWire::skip()
 {

@@ -241,7 +241,7 @@ class OneWire
      *   .
      * . 
      */
-    enum_oneWireState write_bit(uint8_t v);
+    void write_bit(uint8_t v);
 
     // Read a bit.
     /**

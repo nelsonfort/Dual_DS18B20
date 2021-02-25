@@ -1,8 +1,8 @@
-// millisDelay.h
+// microsDelay.h
 // see the tutorial https://www.forward.com.au/pfod/ArduinoProgramming/TimingDelaysInArduino.html
 
-#ifndef MILLIS_DELAY_H
-#define MILLIS_DELAY_H
+#ifndef MICROS_DELAY_H
+#define MICROS_DELAY_H
 
 /*
  * (c)2018 Forward Computing and Control Pty. Ltd.
@@ -10,16 +10,19 @@
  * This code is not warranted to be fit for any purpose. You may only use it at your own risk.
  * This generated code may be freely used for both private and commercial use
  * provided this copyright is maintained.
+ *
+ * 2021-2 Creating Micros library.  -- NF
+ *
  */
  
-class millisDelay {
+class microsDelay {
   public:
 
-    millisDelay();
+    microsDelay();
 
     /**
-      Start a delay of this many milliseconds
-      @param delay in millisconds, 0 means ifFinished() return true on first call
+      Start a delay of this many microseconds
+      @param delay in microsconds, 0 means ifFinished() return true on first call
     */
     void start(unsigned long delay);
 
@@ -60,13 +63,13 @@ class millisDelay {
     bool isRunning();
 
     /**
-      Returns the last time this delay was started, in mS, by calling start(), repeat() or restart()
+      Returns the last time this delay was started, in uS, by calling start(), repeat() or restart()
       Returns 0 if it has never been started
     */
     unsigned long getStartTime();
 
     /**
-      How many mS remaining until delay finishes
+      How many uS remaining until delay finishes
       Returns 0 if finished or stopped
     */
     unsigned long remaining();
@@ -77,7 +80,7 @@ class millisDelay {
     unsigned long delay();
 
   private:
-    unsigned long mS_delay;
+    unsigned long uS_delay;
     unsigned long startTime;
     bool running; // true if delay running false when ended
     bool finishNow; // true if finish() called to finish delay early, false after justFinished() returns true
