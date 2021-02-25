@@ -34,9 +34,13 @@ So the microcontroller can do other tasks during the communication.
 ![ReadingAllRegs2](/RDM_IMAGES/ReadingAllRegsZoom1.jpeg)
 
 
-![ReadingAllRegs3](/RDM_IMAGES/ReadingAllRegsZoom2.jpeg)
+![ReadingAllRegs3](/RDM_IMAGES/ReadingAllRegsZoom2.jpeg)  
+  
 
-*-------------------------25/02----------------------------------*
+
+*-------------------------25/02----------------------------------*  
+  
+  
 Updated the library removing direct_write and direct_read methods that
 not works as direct as expected. digitalRead and digitalWrite are much faster.
 
