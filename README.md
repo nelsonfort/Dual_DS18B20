@@ -30,17 +30,23 @@ In the following images the toogle pin is working while the library is communica
 
 So the microcontroller can do other tasks during the communication.   
 
-*---------------Currently debugging------------------------*  
-
-*-----Need to verify if the data received is correct.------*  
 
 ![ReadingAllRegs2](/RDM_IMAGES/ReadingAllRegsZoom1.jpeg)
 
 
 ![ReadingAllRegs3](/RDM_IMAGES/ReadingAllRegsZoom2.jpeg)
 
+*-------------------------25/02----------------------------------*
+Updated the library removing direct_write and direct_read methods that
+not works as direct as expected. digitalRead and digitalWrite are much faster.
 
+There is a new library ds18b20 that uses the OneWire customized library.
+The ds18b20 is used to initialize the sensor automatically and read the 
+temperature with only a few of methods.
 
+These libraries are tested with large delays and the results obtained are correct. So this implementation can be used with other code without problems.
+
+**Note:** to implement this behavior it was required to implement a small blocking delay for each access to a method inside the OneWire library. This blocking delay is lower than 70us in all of the cases.
 
 
 
