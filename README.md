@@ -48,6 +48,24 @@ These libraries are tested with large delays and the results obtained are correc
 
 **Note:** to implement this behavior it was required to implement a small blocking delay for each access to a method inside the OneWire library. This blocking delay is lower than 70us in all of the cases.
 
+The following image shows the two sensors working. In this case there is some delays to make sure the library is working properly.
+In the serial monitor it can be seen both sensors working and its temperature is shown.
+![two_sensors_working](/RDM_IMAGES/two_sensors_working.png)
 
+This are the waveforms of the data transmission to the sensors. 
+![waveforms_2_sensors](/RDM_IMAGES/waveforms_2_sensors.jpg)
+
+### Library installation
+Download the library and add it to the Arduino library.
+
+### Connection
+Select 2 data pins in the sketch that will be use to connect the two sensor. Its better use two data pins to avoid the use of transistors to select from one sensor to another.  
+The sensors are active powered so the ground pin is connected to GND and
+the power pin is connected to the 3V3 pin.  
+Data pin is connected with a pullup resistor of 4.7K.  
+
+![connection1](/RDM_IMAGES/connection1.jpg)  
+
+![connection2](/RDM_IMAGES/connection2.jpg)  
 
 This library is based in the [OneWire Arduino Library](https://www.arduinolibraries.info/libraries/one-wire) 
