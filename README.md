@@ -64,10 +64,12 @@ Download the library and add it to the Arduino library.
 
 ### Connection
 Select 2 data pins in the sketch that will be use to connect the two sensor. Its better use two data pins to avoid the use of transistors to select from one sensor to another.  
+  
 The sensors are active powered so the ground pin is connected to GND and
-the power pin is connected to the 3V3 pin.  
+the power pin is connected to the 3V3 pin. 
+   
 Data pin is connected with a pullup resistor of 4.7K.  
-
+  
 ![connection1](/RDM_IMAGES/connection.jpg)  
 
 ![connection2](/RDM_IMAGES/connection2.jpg)  
