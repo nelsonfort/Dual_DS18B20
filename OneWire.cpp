@@ -140,12 +140,10 @@ sample code bearing this copyright.
 */
 
 #include <Arduino.h>
-#include <microsDelay.h>
 #include "OneWire.h"
 #include "util/OneWire_direct_gpio.h"
 
-microsDelay delayMicros; /*non blocking delay in us class*/
-static uint8_t pin_oneWire;
+
 
 void OneWire::begin( uint8_t pin )
 {
@@ -216,7 +214,7 @@ enum_oneWireState OneWire::reset(void)
 			else if(delayMicros.justFinished())
 			{
 				firstEntry = true;
-				step = allowBusToBeFloat; /*goes to the next step*/						
+				step = allowBusToBeFloat; /*goes to the next step*/
 			}	
 			break;
 			

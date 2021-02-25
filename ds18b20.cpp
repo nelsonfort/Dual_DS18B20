@@ -7,14 +7,15 @@
 #include "ds18b20.h"
 
 #define BYTE 8
+#define NIBBLE 4
 
 
-static OneWire sensor;
 
 /*Publics Methods ------------------------------------------------------------------------------*/
 
-ds18b20::ds18b20( uint8_t pin_oneWire ) /*ds18b20 constructor*/
+void ds18b20::begin( uint8_t pin ) /*ds18b20 constructor*/
 {
+	pin_oneWire = pin;
 	sensor.begin(pin_oneWire);
 }
 
@@ -138,7 +139,7 @@ enum_oneWireState ds18b20::waitConversionReady()
 
 
 
-enum_oneWireState ds18b20::readTemperature( uint16_t *readBuffer )
+enum_oneWireState ds18b20::readTemperature( float *readBuffer )
 {
 	enum_oneWireState functionState = functionBusy;
 	static uint8_t readBytes[2] = { 0 , 0 };
@@ -146,9 +147,7 @@ enum_oneWireState ds18b20::readTemperature( uint16_t *readBuffer )
 	if( sensor.read_bytes(readBytes, 2) == functionFinishes )
 	{
 		/*loads the readBuffer with the temperature data*/
-		*readBuffer = readBytes[1]; /*MSB*/
-		*readBuffer <<= BYTE;
-		*readBuffer |= (0x00FF & (uint16_t)readBytes[0]); /*LSB*/ 
+		*readBuffer = receivedData_to_float( readBytes, 2 );
 		
 		/*cleans the readBytes array*/
 		readBytes[0] = 0;
@@ -165,7 +164,29 @@ enum_oneWireState ds18b20::readTemperature( uint16_t *readBuffer )
 
 
 
-float recievedData_to_float( uint8_t *bytes, uint8_t byteCount )
+float ds18b20::receivedData_to_float( uint8_t *bytes, uint8_t byteCount )
 {
-	float
+	float convertedValue = 0;
+	uint8_t aux = 0;
+	
+	/*loads the decimal part of the converted value. Bits 0 to 3 from the received data*/
+	if( (bytes[0] & 0x01) != 0 )
+		convertedValue = 0.0625;
+	
+	if( (bytes[0] & 0x02) != 0 )
+		convertedValue += 0.125;
+	
+	if( (bytes[0] & 0x04) != 0 )
+		convertedValue += 0.25;
+	
+	if( (bytes[0] & 0x08) != 0 )
+		convertedValue += 0.5;
+	
+	/*loads the integer part of the converted value. Bits 4 to 11 from the received data*/
+	aux = bytes[1] << NIBBLE; /*loads the MSF NIBBLE*/
+	aux |= (bytes[0] >> NIBBLE) & (0x0F); /*loads the LSF NIBBLE*/
+	
+	convertedValue += (float) aux;
+	
+	return convertedValue;
 }

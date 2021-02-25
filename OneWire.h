@@ -61,6 +61,7 @@
 */
 #include "util/OneWire_direct_regtype.h"
 
+#include <microsDelay.h>
 /*TypeDefs ----------------------------------------------------------------------------*/
 typedef enum
 {
@@ -84,6 +85,8 @@ class OneWire
   private:
     IO_REG_TYPE bitmask;
     volatile IO_REG_TYPE *baseReg;
+	microsDelay delayMicros; /*non blocking delay in us class*/
+	uint8_t pin_oneWire;
 /**
  * @brief This attributes are added if ONEWIRE_SEARCH is 1.
  * 

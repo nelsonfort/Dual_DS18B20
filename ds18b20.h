@@ -10,7 +10,9 @@
 class ds18b20
 {
 	public:
-		ds18b20( uint8_t pin_oneWire );
+		ds18b20( uint8_t pin ){ begin(pin); };
+		
+		void begin( uint8_t pin );
 		
 		/*returns "functionBusy" or "functionFinishes". When return functionFinishes, readBuffer was loaded with data*/
 		enum_oneWireState takeMeasure(float *readBuffer); 
@@ -18,7 +20,8 @@ class ds18b20
 	
 	
 	private:
-		
+		OneWire sensor;
+		uint8_t pin_oneWire;
 		
 		enum_oneWireState convert_T( void ); /* sends the convert T command to the sensor for the initialization of the measure. Returns "functionBusy" or "functionFinishes" */
 		
@@ -26,7 +29,7 @@ class ds18b20
 		
 		enum_oneWireState waitConversionReady( void ); /* checks if the sensor has finished the conversion. Returns "functionBusy" or "functionFinishes */
 		
-		enum_oneWireState readTemperature( uint16_t *readBuffer ); /*returns "functionBusy" or "functionFinishes". When returns functionFinishes, readBuffer was loaded with data*/
+		enum_oneWireState readTemperature( float *readBuffer ); /*returns "functionBusy" or "functionFinishes". When returns functionFinishes, readBuffer was loaded with data*/
 		
-		float recievedData_to_float( uint8_t *bytes, uint8_t byteCount ); /*converts the received data to Celcius on a float*/
+		float receivedData_to_float( uint8_t *bytes, uint8_t byteCount ); /*converts the received data to Celcius on a float*/
 };
