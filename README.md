@@ -40,7 +40,7 @@ So the microcontroller can do other tasks during the communication.
 
 *-------------------------25/02----------------------------------*  
   
-  
+
 Updated the library removing direct_write and direct_read methods that
 not works as direct as expected. digitalRead and digitalWrite are much faster.
 
@@ -68,7 +68,7 @@ The sensors are active powered so the ground pin is connected to GND and
 the power pin is connected to the 3V3 pin.  
 Data pin is connected with a pullup resistor of 4.7K.  
 
-![connection1](/RDM_IMAGES/connection1.jpg)  
+![connection1](/RDM_IMAGES/connection.jpg)  
 
 ![connection2](/RDM_IMAGES/connection2.jpg)  
 
