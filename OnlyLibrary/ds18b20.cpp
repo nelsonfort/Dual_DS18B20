@@ -41,10 +41,7 @@ enum_oneWireState ds18b20::takeMeasure(float *readBuffer)
 			if( functionState == functionFinishes )
 			{	
 				step = readTemperature;
-				//DEBUG
-					digitalWrite(19, HIGH);
-					digitalWrite(19, LOW);
-				//DEBUG
+
 			}
 			else if( functionState == functionError )
 					returnState = functionError;
